@@ -189,7 +189,7 @@ if (change_bottom_flag == True):
 # avoid numerical issues (i.e., unrealistically isolated heads) in the head solution.
 ibound = clean_ibound(ibound)
               
-# Delete the framework directory and write the various MODFLOW framework input files
+# Delete the contents of the framework directory and write the various MODFLOW framework input files
 del_frame_dir(model_frame_dir)
 np.savetxt(ibound3D_file,gu.threeD_to_twoD(ibound),fmt='%10i')
 np.savetxt(modeltop_file,top,fmt='%5.2f')

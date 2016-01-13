@@ -82,45 +82,7 @@ def del_scratch():
     
     return
 
-def write_ibound_raster(domain_shp):
-    '''Writes the IBOUND raster to disk.'''
 
-    # Rasterize the projected IBOUND zonaton
-    print '\nRasterizing the IBOUND zonation scheme.\n'
-    layer_name = os.path.basename(domain_shp).replace('.shp','')
-    rasterize_cmd = ['gdal_rasterize'] + cache_config
-    rasterize_cmd = rasterize_cmd + ['-a_nodata',str(no_data),'-a',ibound_field,'-l',layer_name,'-tr',str(grid_dx),str(grid_dy),domain_shp,ibound_raster]
-    subprocess.call(rasterize_cmd)
-         
-    return
-
-def check_existing_ibound(ibound_raster):
-    '''Checks for an existing copy of the IBOUND raster.'''
-    
-    if (os.path.isfile(ibound_raster) == True):
-        del_raster = None
-        while (del_raster not in ['Y','N','y','n']):
-            del_raster = raw_input('Do you want to overwrite the existing IBOUND raster? Y/N ')
-        if (del_raster in ['Y','y']):
-            print '\nAttempting to delete the raster.'
-            print 'Note that you may need to release/delete the file in ArcMap/Catalog.\n'
-            os.remove(ibound_raster)
-            return
-        else:
-            print 'Stopping.'
-            quit()    
-
-def get_raster_extents(raster_fin):
-    
-    with rasterio.open(raster_fin,'r') as src:
-        
-        # calculate extent of raster
-        x_min = src.transform[0]
-        x_max = src.transform[0] + src.transform[1]*src.width
-        y_min = src.transform[3] + src.transform[5]*src.height
-        y_max = src.transform[3]
-        
-    return x_min,y_min,x_max,y_max
 
 # ---- !!! SCRIPT STARTS HERE !!! ----
 
@@ -131,7 +93,7 @@ def get_raster_extents(raster_fin):
 # Confirm that any existing IBOUND rasters are to be overwritten
 check_existing_ibound(ibound_raster)
 
-# Project and rasterize the IBOUND information.
+# Rasterize the PROJECTED IBOUND information.
 # The bounds of this IBOUND becomes the clipping bounds for subsequent datasets
 write_ibound_raster(domain_shp)
 x_min,y_min,x_max,y_max = get_raster_extents(ibound_raster)
