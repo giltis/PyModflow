@@ -73,7 +73,7 @@ Created on Tue Oct 20 18:00:46 2015
 """
 import fiona,urllib2,json
 import pandas as pd
-from pygrid import grid_util as gu
+from pymodflow.pygrid import grid_util as gu
 
 # --- START SCRIPT PARAM SET ---
 

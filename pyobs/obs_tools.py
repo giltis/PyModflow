@@ -13,7 +13,7 @@ Created on Tue Nov 10 08:57:21 2015
 import rasterio,fiona,pyproj
 from shapely.geometry import mapping,shape,Point
 from fiona.crs import from_epsg
-from pygrid import grid_util as gu
+from pymodflow.pygrid import grid_util as gu
 import numpy as np
 import pandas as pd
 from itertools import product
@@ -82,8 +82,8 @@ def pval_to_field(pval_dict,zones_array,constant_key=0):
 def pval_to_dict(pval_file,split_zone_flags=True):
     '''Read a parameter value file and returns UP TO two dictionaries.
     (i) For all cases, returns a dictionary with key=param_name and value=param_value.
-    (ii) If is_zones=True, returns a dictionary with key=zone flag and
-    value=param_value (if is_zones=False, returns None for second dict).'''
+    (ii) If split_zone_flags=True, returns a dictionary with key=zone flag and
+    value=param_value (if split_zone_flags=False, returns None for second dict).'''
     
     pval_df = pd.read_table(pval_file,delim_whitespace=True,header=None)    
     pval_df.columns = ['Parameter','Value']
