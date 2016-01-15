@@ -8,13 +8,16 @@ Created on Tue Nov 10 08:57:21 2015
 import math
 import pandas as pd
 import numpy as np
-from datetime import timedelta
+import datetime as dt
 import statsmodels.api as sm
 
 import matplotlib.pyplot as plt
 plt.ioff()
 
 # --- START MODULE PARAM SET ---
+
+# See map_discharge_date_to_rch_date for info on this parameter
+oldest_allowable_date = dt.datetime(1700,01,01) 
 
 terminated_status = 2   # MP6 status flag for normally-terminated particles
 
@@ -25,7 +28,8 @@ quarter_map = {'Jan':'Jan','Feb':'Jan','Mar':'Jan','Apr':'Apr','May':'Apr','Jun'
 recharge_to_volume = 1
 
 # --- STOP MODULE PARAM SET ----
-def value_from_date(irow,i_ts_object,downscale=None):
+def value_from_date(irow,i_ts_object,mpdirection=None,check_col='RechargeInput_Lookup',\
+                    isteady_input=True):
     """Finds the date index in a pandas SERIES that is NEAREST to the specified
     date and returns the associated value.i_ts_object can be a series
     (e.g., atm tracer inputs) or a dictionary of arrays (e.g., land surface
@@ -33,23 +37,31 @@ def value_from_date(irow,i_ts_object,downscale=None):
     recharge date with the following year's estimated inputs.  This approximation
     deemed acceptable given the broader uncertainties associated with the loading
     estimations."""
-
-    idate = irow['RechargeDate']
-    irow,icol = irow['Final Row'],irow['Final Column']    
     
+    idate = irow[check_col]
+    
+    # The (row,col) index is a function of particle tracking direction.
+    # Note the shift from MODFLOW to Python indexing for array selection.    
+    if (mpdirection == 'backward'):
+        jrow,jcol = irow['Final Row']-1,irow['Final Column']-1        
+    if (mpdirection == 'forward'):
+        jrow,jcol = irow['Initial Row']-1,irow['Initial Column']-1
+   
     if (type(i_ts_object) is dict):
         # For case in which the passed time series argument is a dictionary:
-        # Convert the dictionary keys to a series of dates.
-        # The default dictionary has multiple downscaled time
-        # series at the second level of the dictionary. Note that this function
-        # need to be made smarter in order to accomodate future deviations from
-        # this default dict structure
-        
-        iseries = sorted(i_ts_object[downscale].keys())
-        iseries = pd.Series(iseries,iseries)
-        
-        idx = np.argmin(np.abs(iseries - idate))        
-        ival = i_ts_object[downscale][idx][irow,icol]
+        # Current version assumes that the check_col in the particle dataframe
+        # maps to the keys in the input dictionary
+    
+        if (isteady_input == True):
+            ival = i_ts_object[i_ts_object.keys()[0]][jrow,jcol]
+            
+        else:        
+            if (idate < min(i_ts_object.keys())):
+                ival = 0
+            elif (idate > max(i_ts_object.keys())):
+                ival = 0
+            else:
+                ival = i_ts_object[idate][jrow,jcol]
     
     else:
         # For the case in which the passed time series argument is a pandas Series.
@@ -216,34 +228,24 @@ def write_restart(self,active_df,terminated_df,restart_csv,restart_flag):
 # --- START RECHARGE FUNCTIONS ---
 # ================================
 
-def get_recharge_rate(row,irch_ts_dict,idirection):
-    '''Helper function that should not be called directly by the user.
-    Returns the recharge rate at the water table cell.'''
-    
-    irates = irch_ts_dict[0]
-    
-    if (idirection == 'backward'):
-        return irates[(row['Final Row']-1),(row['Final Column']-1)] # Conversion to Python indices
-        
-    if (idirection == 'forward'):
-        return irates[(row['Initial Row']-1),(row['Initial Column']-1)] # Conversion to Python indices
-
-def get_recharge_date(row,idirection):
-    '''Helper function that should not be called directly by the user.
+def get_rch_date(row,idirection,discharge_dates=None):
+    '''HELPER FUNCTION that should not be called directly by the user.
     For transport observations simulated with backward tracking,
     returns the recharge date given the observation date and the travel time
-    to that observation. FORWARD TRACKING NOT YET IMPLEMENTED'''
-    
+    to that observation. NO FORWARD METHOD IMPLEMENTED (see map_discharge_dates()).'''
+          
     if (idirection == 'backward'):
         return (row['TobDate'] - timedelta(days=(row['ThisTravelTime'])))
         
     if (idirection == 'forward'):
         return None
 
-def get_rch_volume_per_particle(row,iarea,time_length=1):
+def get_rch_volume_per_particle(row,iarea,time_length=365.25):
     '''Returns the recharge volume assigned to each cell. NEEDS UPDATE 
     (including supporting work elsewhere) in order to derive actual time step
-    length. E.g., time_length = recharge_stress_periods[row.PythonTimeStep].''' 
+    length). Current version assumes steady state, with annual time step
+    for solute input time series (and thus an interest in getting volume
+    recharge/year).''' 
     
     irate = row['RechargeRate']
     iparticles = row['NParticles']    
@@ -251,24 +253,11 @@ def get_rch_volume_per_particle(row,iarea,time_length=1):
     
     return ivol
 
-def get_timestep(row):
-    '''Returns the time step during which the indicated time value is located.
-    This is used to identify the recharge amount associated with the particle.
-    NOTE: RETURNS TIME STEP IN PYTHON INDEXING (not MODPATH indexing).'''
-    
-    if (row['Initial Time'] < rch_timesteps[0]):
-        istep = 0
-    else:
-        # Find the maximum time step that is less than the time value
-        lower_bounds = rch_timesteps <= row['Initial Time']
-        istep = np.max(np.where(lower_bounds == True))
-        
-    return istep
-
-def map_rch_input(idf,rch_ts_dict,nx=1,ny=1,nz=1,cell_area=None,mpdirection=None):
+def map_rch_input(idf,rch_ts_dict,nx=1,ny=1,nz=1,cell_area=None,mpdirection=None,ss_input=True):
     '''Associates each particle in a dataframe with a recharge rate (NEED TO CHECK RECHARGE VOLUME).
     Currently assumes steady state simulation; NEEDS METHOD OF ASSOCIATING PARTICLE START TIME WITH
-    SELECTION FROM RECHARGE TIME SERIES. rch_ts_dict = recharge time series dictionary [keys=time
+    SELECTION FROM RECHARGE TIME SERIES. Consider using value_from_date function.
+    rch_ts_dict = recharge time series dictionary [keys=time
     step,values=(nrow,ncol).'''
     
     if (mpdirection == 'backward'):
@@ -277,11 +266,12 @@ def map_rch_input(idf,rch_ts_dict,nx=1,ny=1,nz=1,cell_area=None,mpdirection=None
         idf['RechargeRate'] = idf.apply(get_recharge_rate,axis=1,args=(rch_ts_dict,'backward'))
         idf['RechargeVol']  = idf['RechargeRate'] * recharge_to_volume                          # <- NOT CORRECT # # #
         
-    if (mpdirection == 'forward'):
+    if (mpdirection == 'forward'):       
+        
         # For forward-particle simulations: extract the recharge rate for
         # starting particles from the recharge time series
-        idf['NParticles'] = nx * ny * nz            
-        idf['RechargeRate'] = idf.apply(get_recharge_rate,axis=1,args=(rch_ts_dict,'forward'))
+        idf['NParticles'] = nx * ny * nz
+        idf['RechargeRate'] = idf.apply(value_from_date,axis=1,args=(rch_ts_dict,'forward'))
         idf['RechargeVol']  = idf.apply(get_rch_volume_per_particle,axis=1,args=(cell_area,))
                         
     return idf
@@ -290,7 +280,20 @@ def map_rch_input(idf,rch_ts_dict,nx=1,ny=1,nz=1,cell_area=None,mpdirection=None
 # --- STOP RECHARGE FUNCTIONS ----
 # ================================
 
-def modify_by_list(idf,describe=None,filter_by_col='Particle ID',filter_list=None,modify_col='RechargeConc',remove_fraction=1):
+def modify_all(idf,describe=None,modify_col=None,remove_fraction=None):
+    '''Returns a modified dataframe with a reduced solute concentration
+    for all particles.  E.g., for simulation of nitrate removal by stream
+    removal, in which the input dataframe has already been filtered by
+    zone such that all particles in the dataframe belong to the same zone
+    and as a result are subject to the same removal fraction.'''
+    
+    idf['Before_' + describe] = idf[modify_col].copy()
+    idf[modify_col] = idf[modify_col] * remove_fraction
+    
+    return idf
+    
+def modify_by_list(idf,describe=None,filter_by_col=None,filter_list=None,\
+                   modify_col=None,remove_fraction=1):
     '''Returns a modified dataframe with a reduced
     solute concentration if the particle is flagged by the remove_by_col argument.
     E.g., for simulation of nitrate removal by denitrification, a list of particle
@@ -309,13 +312,20 @@ def modify_by_list(idf,describe=None,filter_by_col='Particle ID',filter_list=Non
     
     return idf
     
-def modify_by_array(idf,describe=None,modify_col='RechargeConc',remove_fraction_array=None):
+def modify_by_array(idf,describe=None,modify_col=None,remove_fraction_array=None,mpdirection=None):
     '''Returns a modified dataframe with a reduced solute concentration where
     the reduction is a function of an array of reduction factors.'''
     
+    # The (row,col) index is a function of particle tracking direction.
+    # Note the shift from MODFLOW to Python indexing for array selection.    
+    if (mpdirection == 'backward'):
+        irow_colname,icol_colname = 'Final Row','Final Column'        
+    if (mpdirection == 'forward'):
+        irow_colname,icol_colname = 'Initial Row','Initial Column'
+    
     idf['Before_' + describe] = idf[modify_col].copy()
     
-    idf['FractionRemoved'] = idf.apply(lambda x:remove_fraction_array[x['Final Row']-1,x['Final Column']-1],axis=1)
+    idf['FractionRemoved'] = idf.apply(lambda x:remove_fraction_array[x[irow_colname]-1,x[icol_colname]-1],axis=1)
     idf[modify_col] = idf[modify_col] * idf['FractionRemoved']
     idf = idf.drop('FractionRemoved',axis=1)
 
@@ -385,7 +395,6 @@ def summarize_sim_species(sim_df,obs_df):
         
     return species_summary_df
 
-
 def write_sim_transport(idf,itob_order,itob_fout):
     '''Writes the simulated transport output to file.'''
     
@@ -399,6 +408,44 @@ def write_sim_transport(idf,itob_order,itob_fout):
             fout.write('%-15s%15.6e%15.6e\n' %(iname,isim,iobs))
         
     return
+
+def map_solute_input(idf,input_ts_object=None,obs_df=None,mpdirection=None):
+    '''Associates each particle in the input dataframe with a
+    recharging solute concentration. Note that for backtracked particles
+    this requires first associating a transport observation DATE with each particle.
+    For forward tracked particles the input dataframe must already include the
+    recharge date. 'input_ts_object' can be a
+    dataframe (e.g., atm tracer inputs) or a dictionary (e.g., land surface nitrate inputs).'''
+
+    if any(substring in mpdirection for substring in ['FOR','For','for']):
+        
+        idf['RechargeConc'] = idf.apply(value_from_date,axis=1,args=(input_ts_object,'forward'),isteady_input=False)
+
+        return idf
+
+    if any(substring in mpdirection for substring in ['BACK','Back','back']):
+        
+        obs_df['station_nm'] = obs_df['ObsName'].apply(lambda x:x.split('_')[0])
+        
+        # This loop generates a separate dataframe for each observation
+        ispecies_df = pd.DataFrame()
+        for idx,irow in obs_df.iterrows():
+    
+            # Get all the particles that originated at this observation location . . .
+            isite = irow['station_nm']
+            itob  = idf[idf['station_nm'] == isite].copy()
+            
+            # . . . and map them to the applicable locations for this
+            # transport species
+            itob['ObsName'] = idx
+            itob['TobDate'] = pd.to_datetime(irow['TobDate'])
+            
+            itob['RechargeDate'] = itob.apply(get_rch_date,axis=1,args=('backward',))
+            itob['RechargeConc'] = itob.apply(value_from_date,axis=1,args=(input_ts_object,downscale,'backward'))
+            
+            ispecies_df = ispecies_df.append(itob)
+    
+        return ispecies_df
 
 # ---
 
@@ -457,36 +504,68 @@ class Endpoint(object):
         self.df['TobDate'] = pd.to_datetime(self.df['TobDate'])
         
         return
-           
-    def map_solute_input(self,input_ts_object=None,obs_df=None,downscale=None):
-        '''Associates each particle with a recharging solute concentration. Note
-        that this requires first associating a transport observation DATE with
-        each particle. 'input_object' can be a dataframe (e.g., atm tracer inputs)
-        or a dictionary (e.g., land surface nitrate inputs).'''
+
+    def map_discharge_date_to_rch_date(self,discharge_dates=None,track_discharge_zones=None):
+        '''For forward tracking, returns a dictionary of dictionaries,
+        {discharge zone id: {discharge date: endpoint dataframe w/ recharge date}}
+        'discharge_dates' is a pandas time series.
+        Note that the datetime and timedelta processes collapse (resulting in
+        an overflow error) with dates earlier than the mid 17th century
+        It may be necessary at some point in the
+        future to get precise dates for these instances; for now, however, particles
+        that encounter this constraint are simply assigned a minimum recharge
+        date as specified in the script parameters (above).'''
         
-        obs_df['station_nm'] = obs_df['ObsName'].apply(lambda x:x.split('_')[0])
+        discharge_df = self.df.copy()
         
-        # This loop generates a separate dataframe for each observation
-        ispecies_df = pd.DataFrame()
-        for idx,irow in obs_df.iterrows():
-
-            # Get all the particles that originated at this observation location . . .
-            isite = irow['station_nm']
-            itob  = self.df[self.df['station_nm'] == isite].copy()
+        # Replace problematic old dates with the longest admissable travel time
+        traveltime_cutoff = (discharge_dates[0] - oldest_allowable_date).days
+        discharge_df['ThisTravelTime'].loc[discharge_df['ThisTravelTime'] > traveltime_cutoff] = traveltime_cutoff
+        
+        if track_discharge_zones is None:        
+            track_discharge_zones = discharge_df['Final Zone'].unique()
+       
+        # For subsequent operations involving vectorized timedelta operations,
+        # convert the discharge_dates and the travel times to numpy arrays
+        discharge_dates_vector = np.array(discharge_dates)
+        
+        # Generate the dictionary of dataframes
+        discharge_dict = {}
+        
+        # Subset the zones . . .
+        for izone in track_discharge_zones:
             
-            # . . . and map them to the applicable locations for this
-            # transport species
-            itob['ObsName'] = idx
-            itob['TobDate'] = pd.to_datetime(irow['TobDate'])
+            print 'Calculating recharge dates for all discharge dates in zone %i' %(izone)
             
-            itob['RechargeDate'] = itob.apply(get_recharge_date,axis=1,args=('backward',))
-            itob['RechargeConc'] = itob.apply(value_from_date,axis=1,args=(input_ts_object,downscale))
+            discharge_dict[izone] = {}
             
-            ispecies_df = ispecies_df.append(itob)
-
-        return ispecies_df
-
-    def add_discharge_dates(self,mp_start_date=None,quarterly=False):
+            idf = discharge_df[discharge_df['Final Zone'] == izone]
+            itraveltimes_vector = np.array(idf['ThisTravelTime'],dtype='timedelta64[D]')
+            
+            # . . . then iterate on the dates
+            for idate in discharge_dates_vector:
+                
+                # Revert the date to a datetime object for use as the dict key
+                idate_key = pd.to_datetime(idate)
+                
+                # Create a vector of constants where constant = discharge_date[i]
+                idischarge_date_vector = np.array([idate for x in range(len(itraveltimes_vector))])
+                
+                # Subtract the particle travel time to get the recharge date    
+                irch_date_vector = idischarge_date_vector - itraveltimes_vector
+            
+                # Build the dataframe for this discharge date
+                # In order to speed up the mapping of solute inputs to recharge
+                # date, make a simplified (i.e., extract the year) recharge date.
+                # The solute input time series will require the same date simplification
+                # as keys in the solute input dictionary.
+                idf['RechargeDate'] = irch_date_vector
+                idf['RechargeInput_Lookup'] = pd.DatetimeIndex(idf['RechargeDate']).year
+                discharge_dict[izone][idate_key] = idf
+                                                               
+        return discharge_dict
+ 
+    def map_discharge_dates(self,mp_start_date=None,quarterly=False):
         '''For forward-tracked particles: calculates the discharge date for
         terminating particles and adds temporal information to the dataframe.'''
 

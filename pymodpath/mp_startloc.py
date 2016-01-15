@@ -6,7 +6,7 @@ Created on Mon Mar 09 11:55:53 2015
 """
 
 import numpy as np
-from pygrid import grid_util as gu
+from pymodflow.pygrid import grid_util as gu
 import itertools
 from scipy.spatial.distance import cdist
 

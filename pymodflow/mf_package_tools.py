@@ -151,52 +151,6 @@ def update_param_fields(update_these_params=None):
         model_param_field_dict[iparam] = ifield
 
     return model_param_field_dict
-    
-def update_bc_dicts(update_which_bc=None,ibound=None,landsurface=None,landuse=None):
-    '''Compiles the updated boundary condition dictionaries and returns
-    a dictionary of dictionaries. 'update_which_bc is a dict with
-    key=bc_type ('DRN','GBH','RCH') and value=None or array (e.g, 'DRN'
-    and 'GHB' require an array that serves as the basis of the
-    conductance - e.g, the hk or trans arrays; 'RCH' requires the rch array).'''
-
-    model_bc_dict = {}
-        
-    landsurface_to_bc = np.copy(landsurface)
-    landsurface_to_bc[ibound[0,:,:] == 0] = np.nan    
-        
-    conductance_dy = lay_thick[0]
-    print 'Conductancy dy = %.3f' %(conductance_dy)
-    
-    # Mask the land surface elevation array in order to reduce that array to only those
-    # cells to which each boundary condition should be applied
-    
-    # The .ghb cells are specified using the ghb_landuse_dict
-    ghb_stages = np.ma.MaskedArray(landsurface_to_bc,~np.in1d(landuse,ghb_landuse_dict.keys()))
-    ghb_stages = ghb_stages.filled(np.nan)
-    
-    # The .drn cells are all active, non-constant head cells EXCEPT for those
-    # cells specified as .ghb cells
-    drn_stages = landsurface_to_bc
-    drn_stages[np.isfinite(ghb_stages)] = np.nan # Exclude the ghb cells from the drn field      
-
-    if ('DRN' in update_which_bc):
-        drain_hk = update_which_bc['DRN']
-        drain_hk = drain_hk[0,:,:]
-        drn_dict = mfpt.get_bc_dict(drn_stages,nrow,ncol,delr,delc,nper=1,hk=drain_hk,conductance_dy=conductance_dy)
-        model_bc_dict['DRN'] = drn_dict
-    
-    if ('GHB' in update_which_bc):
-        ghb_hk = update_which_bc['GHB']
-        ghb_hk = ghb_hk[0:,:,:]
-        ghb_dict = mfpt.get_bc_dict(ghb_stages,nrow,ncol,delr,delc,nper=1,hk=ghb_hk,conductance_dy=conductance_dy)
-        model_bc_dict['GHB'] = ghb_dict
-
-    if ('RCH' in update_which_bc):
-        rch_update = update_which_bc['RCH']
-        rch_dict = {0:rch_update}
-        model_bc_dict['RCH'] = rch_dict
-    
-    return model_bc_dict
 
 def add_hob_to_namefile(nam_file=None,hob_file=None,heads_sim_file=None,hob_unit=60,heads_sim_unit=61):
     '''Adds the .hob package and the corresponding simulated heads to the namefile.'''
@@ -222,21 +176,3 @@ def reformat_sim_heads_file(heads_order,heads_fin,heads_fout):
             fout.write('%-15s%15.6e%15.6e\n' %(iname,isim,iobs))
         
     return
-
-def get_dissolved_nitrate_dict(fertilizer_dir=None,rch_dict=None,new_loading_df=False,download_nass=False,\
-                               nass_csv=None,loading_csv=None,nitrate_atm_csv=None,county_name=None,\
-                               cdl=None,cdl_apply_list=None):
-    '''Returns a dictionary with key=year (datetime object) and values=(nrow,ncol)
-    array of dissolved nitrate concentrations.'''
-    
-    if (new_loading_df == True):
-        county_df = county_nitrogen.get_county_nitrogen(fertilizer_dir=fertilizer_dir,download_nass=download_nass,\
-                                                        nass_csv=nass_csv,loading_csv=loading_csv,nitrate_atm_csv=nitrate_atm_csv,\
-                                                        county_name=county_name)
-    else:
-        county_df = pd.DataFrame.from_csv(county_nitrogen_csv)
-        
-    nitrate_array_dict,nitrate_avg_df = apply_nitrogen.apply_county_nitrogen(county_df,rch_dict=rch_dict,cdl=cdl,cdl_apply_list=cdl_apply_list,moving_average_window=1,\
-                                                                             nrow=nrow,ncol=ncol,delr=delr,delc=delc,nitrate_rch_pickle=nitrate_rch_pickle)
-     
-    return nitrate_array_dict

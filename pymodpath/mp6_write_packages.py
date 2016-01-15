@@ -5,7 +5,7 @@ Created on Mon Mar 03 13:52:07 2014
 @author: Wesley Zell
 """
 
-from pygrid import grid_util as gu
+from pymodflow.pygrid import grid_util as gu
 
 def write_startloc(particle_dict,startloc_file,mp_startloc_params):
     '''Writes a dictionary of particle starting locations (key=obsname,

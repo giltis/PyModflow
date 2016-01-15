@@ -672,6 +672,8 @@ class Obs(object):
             
             param_zones = list(np.unique(param_array[np.isfinite(param_array) == True]))
             param_zones = [int(i) for i in param_zones]
+
+            print param_name_root,param_zones
             
             idict = {}
             for i in param_zones:

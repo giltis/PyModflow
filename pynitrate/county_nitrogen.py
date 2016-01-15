@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 import os
-from pydata import nass_tools as nass
+from pymodflow.pydata import nass_tools as nass
 from datetime import datetime
 
 # ==================================
