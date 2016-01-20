@@ -9,6 +9,7 @@ Created on Mon Dec 14 16:42:06 2015
 import numpy as np
 import pandas as pd
 import os
+from operator import itemgetter
 import flopy.utils.binaryfile as bf
 from pymodflow.pyobs import obs_tools
 
@@ -100,6 +101,22 @@ def get_bc_dict(bc_stages,nrow,ncol,delr,delc,nper=1,trans=None,decay_rate=None,
         bc_dict[i] = bc_list
 
     return bc_dict
+
+def bcdict_to_field(idict=None,nrow=None,ncol=None,iper=0,\
+                    row_idx=1,col_idx=2,val_idx=None):
+    '''Maps a boundary condition dictionary to an array. *_idx arguments
+    refer to the item's index in the lists that comprise the dictionary's
+    values for key=iper.'''
+    
+    irows = map(itemgetter(row_idx),idict[iper])    
+    icols = map(itemgetter(col_idx),idict[iper])
+    ivals = map(itemgetter(val_idx),idict[iper])
+    
+    iarray = np.empty((nrow,ncol))
+    iarray[:] = np.nan
+    iarray[irows,icols] = ivals
+    
+    return iarray
 
 def write_openclose_layers(a,file_root=None,file_ext=None,fmt=None,write_dir=None):
     '''Writes a separate 2D array to file for each layer in a (potentially) 3D array. This is required

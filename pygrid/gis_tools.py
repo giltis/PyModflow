@@ -219,7 +219,7 @@ def get_coastal_ibound(ibound=None,dem=None,coast=None,coast_nodata=None):
         n,nw,w,sw,s,se,e,ne = (irow-1,icol),(irow-1,icol-1),(irow,icol-1),(irow+1,icol-1),\
                               (irow+1,icol),(irow+1,icol+1),(irow,icol+1),(irow-1,icol+1)
                              
-        for icheck in [n,nw,w,sw,s,se,e,ne]:                    
+        for icheck in [n,s,e,w]: # Note that, for solvers, diagonally-adjacent doesn't count as connected
             try:
                 # If the coastal cell is adjacent to an active cell, keep it . . .
                 if (ibound[icheck] > 0):
@@ -232,11 +232,12 @@ def get_coastal_ibound(ibound=None,dem=None,coast=None,coast_nodata=None):
                 if (icol == np.shape(ibound)[1]-1) and (icheck in [e,ne,se]): continue
                 adj_coast[irow,icol] = False
    
+   
     # Coordinate the IBOUND constant head flags and the starting heads constant head values             
     ibound[adj_coast == True] = -1 
     start_heads[ibound == -1] = 0
 
     inactive_idx = np.isnan(ibound)
     ibound[inactive_idx] = 0
-            
+
     return ibound,start_heads

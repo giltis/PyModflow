@@ -37,6 +37,23 @@ http_dict = {'GW':['http://nwis.waterdata.usgs.gov/nwis/gwlevels/?site_no=','&ag
 
 # --- Global Functions ---
 
+def get_init_dict(iparam_init_xls,iparam_root,zones_list=None,\
+                  val_col_string=None,key_col='UNIT_CODE'):
+    '''Returns a dictionary of initial parameter values from a spreadsheet.
+    E.g., returns dict for initial transmissivity values as defined in the
+    surficial geology definitions sheet.'''
+    
+    idf = pd.read_excel(iparam_init_xls)
+    idf = idf[idf[key_col].isin(zones_list)]    
+    
+    val_col = [x for x in idf.columns if val_col_string in x][0]
+    idf['ParamName'] = idf[key_col].apply(lambda x:iparam_root + str(x))
+    
+    init_vals = dict(zip(idf['ParamName'],idf[val_col]))
+    init_keys = dict(zip(idf['ParamName'],idf[key_col]))
+    
+    return init_vals,init_keys
+
 def hob_file_to_df(hob_file,skiprows=3,header_start='#'):
     '''Reads a MODFLOW .hob file to a dataframe. This is useful for extracting
     the .hob observation write order and using it as a reference list for 
