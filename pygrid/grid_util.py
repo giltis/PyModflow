@@ -5,8 +5,8 @@ Created on Wed Jul 17 10:56:55 2013
 @author: Wesley Zell
 """
 import numpy as np
-from model_config import nrow,ncol,nlay
 import pyproj
+import xlsxwriter
 
 # ----------------------------
 # --- CALLED BY HEADOBS.PY ---
@@ -104,7 +104,8 @@ def globalz_to_layer(row,modeltop,bottoms,midpoints,ibound3D,layer_thick):
     '''Flag those observations that are outside the active model area. If
     active, return the layer and local z. Else return NaNs. RETURNS
     PYTHON BASED INDEXING.'''
-     
+    
+    nrow,ncol = np.shape(modeltop)
     iname,irow,icol,iwellelev = row['station_nm'],row['Row'],row['Column'],row['well_elev']
     
     if (irow in range(nrow) and icol in range(ncol)):          
@@ -132,11 +133,6 @@ def modelxy_to_localxy(model_x,model_y,delr,delc,nrow,ncol):
     irow = int(np.floor(model_y/delc))
     local_y = 1 - np.mod(model_y,delc)/delc    # global y and row indices increase in opposite directions
 
-#    print nrow,ncol
-#    #print model_x,jcol,local_x
-#    print model_y,irow,local_y
-
-    
     if (irow < 0):
         irow = 0
         local_y = 1
@@ -153,13 +149,70 @@ def modelxy_to_localxy(model_x,model_y,delr,delc,nrow,ncol):
         jcol = ncol-1
         local_x = 1
     
-#    print irow    
-#    #print jcol
-#    assert(False)
-    
     return irow,jcol,local_x,local_y
 
 # -----------------------------------------------------------------------------
+
+def arrays_to_xls(array_list,sheet_name_list,xls_packet_fout):
+    '''Writes arrays to Excel spreadsheet.'''
+    
+    ibook = xlsxwriter.Workbook(xls_packet_fout,{'nan_inf_to_errors': True}) 
+    
+    # Write the arrays to a bundle of Excel sheets to facilitate array inspection
+    for iarray,isheet_name in zip(array_list,sheet_name_list):
+                                  
+        if (iarray.ndim > 2):    # 3D array           
+            for ilay in range(np.shape(iarray)[0]):
+                jarray = iarray[ilay,:,:]
+                isheet_name = isheet_name + '_' + str(ilay+1)
+                isheet = ibook.add_worksheet(isheet_name)
+                print 'Writing sheet: ',isheet_name
+                for (irow,icol),ival in np.ndenumerate(jarray):
+                    isheet.write(irow,icol,ival)
+                
+        else:   # For one layer        
+            isheet = ibook.add_worksheet(isheet_name)
+            print 'Writing sheet: ',isheet_name               
+            for (irow,icol),ival in np.ndenumerate(iarray):
+                isheet.write(irow,icol,ival)                                
+    
+    ibook.close()
+    
+    return
+
+def clean_ibound(ibound):
+    '''Removes isolated active cells from the IBOUND array.'''
+    
+    if (ibound.ndim > 2):
+        nlay,nrow,ncol = np.shape(ibound)
+    else:
+        nrow,ncol = np.shape(ibound)
+        nlay = 1
+		
+    clean_ibound = np.copy(ibound)
+
+    for ilay in range(nlay):
+
+        if (ibound.ndim > 2):
+            this_layer = clean_ibound[ilay,:,:]
+        else:
+            this_layer = clean_ibound
+            
+        has_neighbor = np.zeros(this_layer.shape,bool)
+        
+        has_neighbor[:,1:]  = np.logical_or(has_neighbor[:,1:], this_layer[:,:-1] > 0)  # left
+        has_neighbor[:,:-1] = np.logical_or(has_neighbor[:,:-1], this_layer[:,1:] > 0)  # right
+        has_neighbor[1:,:]  = np.logical_or(has_neighbor[1:,:], this_layer[:-1,:] > 0)  # above
+        has_neighbor[:-1,:] = np.logical_or(has_neighbor[:-1,:], this_layer[1:,:] > 0)  # below
+
+        this_layer[np.logical_not(has_neighbor)] = 0
+        
+        if (ibound.ndim > 2):
+            clean_ibound[ilay,:,:] = this_layer
+        else:
+            clean_ibound = this_layer
+
+    return clean_ibound
 
 def get_exp_decay(Y0,lam,x_array,asymptote=0):
     '''Returns an ndim array of exponentially-decayed values.'''

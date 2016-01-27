@@ -13,37 +13,46 @@ from operator import itemgetter
 import flopy.utils.binaryfile as bf
 from pymodflow.pyobs import obs_tools
 
-import matplotlib.pyplot as plt
+def write_zoned_bc(bc_array,zone_array,which_zones,bc_zone_map=None,bc_sim_file=None):
+    '''Aggregates the boundary condition by ibound zone and writes to file.'''
 
-def process_drains(budget_binary,baseflow_sim_file,ibound,discharge_ibound_map=None,drain_discharge_plot=None):
-    '''Aggregates the drain discharge by zone and writes to file. IMPROVEMENTS TO MAKE:
-    Save the plot of active drains to file for each time step.  Use pdf pages or animate.'''
+    nper,nlay,nrow,ncol = np.shape(bc_array)
 
-    ibound = ibound[0,:,:]  # Only using the land surface to discretize to zones
-    zones  = [int(izone) for izone in np.unique(ibound) if izone > 0]
-    
-    cbc = bf.CellBudgetFile(budget_binary)
-    nper = cbc.kstpkper[-1][1]
-    drns = cbc.get_data(text='DRAINS',full3D=True)
-
-    with open(baseflow_sim_file,'w') as fout:
+    with open(bc_sim_file,'w') as fout:
         
-        for iper in range(nper):
-            for izone in zones:
+        for iper in range(nper):            
+            for izone in which_zones:
                 
                 iname = izone
                 
-                if (discharge_ibound_map is not None):
-                    if (izone in discharge_ibound_map):
-                        iname = discharge_ibound_map[izone]
+                if (bc_zone_map is not None):
+                    if (izone in bc_zone_map):
+                        iname = bc_zone_map[izone]
                     else:
                         continue
                 
-                izone_drns = drns[iper][0,:,:][ibound == izone]
-                izone_sum = np.sum(izone_drns) * -1           
+                izone_bc = bc_array[iper,:,:,:][zone_array == izone]
+                izone_sum = np.nansum(izone_bc) * -1           
                 fout.write('%-15s%20.6e\n' %(iname,izone_sum))
     
     return
+
+def get_sim_bc(budget_binary,text=None):
+    '''Extracts a single boundary condition from the budget_binary and returns
+    an (nper,nlay,nrow,ncol) array.'''
+    
+    cbc = bf.CellBudgetFile(budget_binary)
+    bc = cbc.get_data(text=text,full3D=True)
+    
+    # Convert to a 4D numpy array
+    nper = len(bc[0])
+    nlay,nrow,ncol = np.shape(bc[0])
+    
+    bc_array = np.empty((nper,nlay,nrow,ncol))
+    for i in range(nper):
+        bc_array[i,:,:,:] = bc[i]
+
+    return bc_array    
 
 def get_bc_dict(bc_stages,nrow,ncol,delr,delc,nper=1,trans=None,decay_rate=None,hk=None,conductance_dy=None):
     '''Returns a dictionary with key=stress period and values=list of lists['Lay','Row','Col','Stage','Conductance'].

@@ -82,34 +82,63 @@ def plot_unit_elevs(unit_elev,unit_elev_fout,unit_labels,unit_contours,
     
     return
 
-def plot_layers(fout,array,cbar_labels=None,cbar_bins=20):
-    """Plots layer information and saves to file."""
+def plot_layers(fout,array_list,plot_title=None,cbar_labels=None,cbar_bins=20,cbar_title=None):
+    """Plots layer information and saves to file.  Accepts multiple arrays
+    but requires that all arrays are of the same dimensions."""
 
-    nlay,nrow,ncol = np.shape(array)
-    
-    # If the cbar_labels are not provided, generate them from the data
-    if (cbar_labels == None):       
-        cbar_min,cbar_max = np.floor(np.nanmin(array)),np.ceil(np.nanmax(array))
-        cbar_labels = list(np.linspace(cbar_min,cbar_max,cbar_bins))
-        cbar_labels = [int(x) for x in cbar_labels]
+    # Get the array dimensions
+    a = array_list[0]
+    if (a.ndim == 2):
+        nper,nlay,nrow,ncol = 1,1,np.shape(a)
+    if (a.ndim == 3):
+        nper,nlay,nrow,ncol = 1,np.shape(a)
+    if (a.ndim == 4):
+        nper,nlay,nrow,ncol = np.shape(a)
         
-    cbar_ticks = np.arange(1,len(cbar_labels) + 1)
-    
+    # Confirm that all arrays are of the same dimensions
+    if (len(array_list) > 1):
+        for ia in array_list[1:]:
+            if (ia.ndim != a.ndim):
+                quit('Multiple arrays with inconsistent dimensions.')
+                
+    # If the cbar_labels are not provided, generate them from the FIRST array
+    # in the passed array list
+    if (cbar_labels == None):
+        cbar_dict = dict()
+        for ia,icount in zip(array_list,range(len(array_list))):
+            imin,imax = np.floor(np.nanmin(ia)),np.ceil(np.nanmax(ia))
+            ilabels = list(np.linspace(imin,imax,cbar_bins))
+            ilabels = [int(x) for x in ilabels]
+            cbar_dict[icount] = ilabels       
+        
+    # Iterate through the arrays and plot    
     pp = PdfPages(fout)
     
-    for ilay in range(nlay):
-        plot_array = np.ma.masked_array(array[ilay,:,:],mask=[0])
-        
-        plt.figure()
-        cmap = plt.cm.jet
-        cmap.set_under('w')        
-        ax = plt.imshow(plot_array,vmin=np.min(cbar_ticks),
-                        vmax=np.max(cbar_ticks),cmap=cmap,interpolation='nearest')     
-        cbar = plt.colorbar(ax,ticks=cbar_ticks,boundaries=cbar_ticks)
-        cbar.ax.set_yticklabels(cbar_labels)
-        cbar.ax.invert_yaxis()
-        plt.title('Layer %2i' % (ilay+1))
-        pp.savefig()
+    for iper in range(nper):
+        for ilay in range(nlay):
+            
+            plt.figure()
+            cmap = plt.cm.rainbow
+            cmap.set_under('w')
+            
+            for ia,icount in zip(array_list,range(len(array_list))):
+                
+                if (ia.ndim == 2): iplot = ia
+                if (ia.ndim == 3): iplot = ia[ilay,:,:]
+                if (ia.ndim == 4): iplot = ia[iper,ilay,:,:]
+                    
+                if (icount == 0):                
+                    ax = plt.imshow(iplot,cmap=cmap,interpolation='nearest')
+                    cbar = plt.colorbar(ax,ticks=cbar_dict[icount],boundaries=cbar_dict[icount])
+                    cbar.ax.set_yticklabels(cbar_dict[icount])
+                    cbar.ax.invert_yaxis()
+                    cbar.set_label(cbar_title)
+                else:
+                    plt.imshow(iplot,cmap='binary')
+                
+            plt.title(plot_title)
+            plt.xlabel('Period %3i Layer %3i' %(iper+1,ilay+1))
+            pp.savefig()
     
     pp.close()
     
