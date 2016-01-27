@@ -108,7 +108,7 @@ def df_from_url(iurl,sep=None,comment='#',header=0,is_wq=False):
 
 # =============================================================================
 
-def get_station_df(site_url,site_type,keep_station_cols=None,sep=None):
+def get_station_df(site_url,site_type,keep_station_cols=None,sep=None,max_stname_length=20):
     ''' Returns a dataframe of site information.  Current methodology only
     gets site information for sites with head or discharge information.
     Consequently, this function is not used with calls to the water quality web services,
@@ -143,9 +143,12 @@ def get_station_df(site_url,site_type,keep_station_cols=None,sep=None):
         for icol in [['dec_long_va','dec_lat_va']]:
             station_df[icol] = station_df[icol].convert_objects(convert_numeric=True)
     
-    # Remove the spaces in the station names (required for use of station names by UCODE)
-    # and clean up the station information dataframe
+    # Remove the spaces in the station names and reduce the station names to maximum
+    # number of characters
     station_df['station_nm'] = station_df['station_nm'].apply(lambda x: x.replace(" ",""))
+    station_df['station_nm'] = station_df['station_nm'].apply(lambda x: \
+                                         x[0:max_stname_length] if len(x)>max_stname_length else x)
+    station_df['station_nm'] = station_df['station_nm'].apply(lambda x: x.replace(",",""))
     
     print 'Found %i stations.' %(len(station_df))
     print 'NOTE: All stations cached to .csv and must be filtered by subsequent operations.\n'
